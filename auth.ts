@@ -1,74 +1,62 @@
-import NextAuth from "next-auth"
+import NextAuth from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 import Credentials from "next-auth/providers/credentials";
- import { signInSchema } from "@/lib/zod";
- import { compareSync } from "bcrypt-ts";
+import { signInSchema } from "@/lib/zod";
+import { compareSync } from "bcrypt-ts";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
-    adapter: PrismaAdapter(prisma),
-    session:{strategy: "jwt"},
-    pages:{
-        signIn: "/login"
-    },
+  adapter: PrismaAdapter(prisma),
+  session: { strategy: "jwt" },
+  pages: {
+    signIn: "/login"
+  },
   providers: [
     Credentials({
-        credentials:{
-               email: {},
-                password: {},
-            },
-            authorize: async (Credentials) => {
-                const validatedFields = signInSchema.safeParse(Credentials);
+      credentials: {
+        email: {},
+        password: {}
+      },
+      authorize: async (credentials) => {
+        const validatedFields = signInSchema.safeParse(credentials);
 
-                if (!validatedFields.success){
-                    return null;
-                }
-                const {email, password} = validatedFields.data;
+        if (!validatedFields.success) {
+          return null;
+        }
 
-                const user = await prisma.user.findUnique({
-                    where: {email}
-                })
+        const { email, password } = validatedFields.data;
 
-                if(!user || !user.password) {
-                    throw new Error("No user found");
-                }
+        try {
+          const user = await prisma.user.findUnique({
+            where: { email }
+          });
 
-                const passwordMatch = compareSync(password, user.password);
+          if (!user || !user.password) {
+            throw new Error("No user found");
+          }
 
-                if(!passwordMatch) return null;
+          const passwordMatch = compareSync(password, user.password);
 
-                return user;
+          if (!passwordMatch) {
+            throw new Error("Password does not match");
+          }
 
-            }
-
-        
+          return user;
+        } catch (error) {
+          throw new Error(error.message); // Rethrow the error for clarity
+        }
+      }
     })
   ],
-  // callback
-  callbacks:{
-    authorized({auth, request: {nextUrl}}) {
-        const isLoggedIn = !!auth?.user
-        const ProtectedRoutes = ["/dashboard", "/uder", "/product"];
-
-        if(!isLoggedIn && ProtectedRoutes.includes(nextUrl.pathname)){
-            return Response.redirect(new URL("/login", nextUrl));
-        }
-        if(isLoggedIn && nextUrl.pathname.startsWith("/login")){
-            return Response.redirect(new URL("/dashboard", nextUrl));
-        }
-        return true;
+  callbacks: {
+    async authorize({ user }) {
+      // Optional: Add additional logic if needed
+      return user;
     },
-    jwt({token, user}){
-        if(user) token.role = user.role;
-        return token;
-    },
-    session({session, token}){
-        session.user.id = token.sub;
-        session.user.role = token.role;
-        return session;
-
+    async session({ session, token }) {
+      session.user.id = token.sub;
+      session.user.role = token.role;
+      return session;
     }
-        
-    
   }
-})
+});

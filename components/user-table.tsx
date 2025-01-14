@@ -15,7 +15,7 @@ const UserTable = async () => {
             </tr>
         </thead>
         <tbody>
-            {users.map((user)=>(
+            {users.map((user: { id: string; name: string; email: string; role: string }) => (
 
            
             <tr key={user.id}>
